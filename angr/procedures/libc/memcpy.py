@@ -7,6 +7,7 @@ class memcpy(angr.SimProcedure):
     #pylint:disable=arguments-differ
 
     def run(self, dst_addr, src_addr, limit):
+
         if not self.state.solver.symbolic(limit):
             # not symbolic so we just take the value
             conditional_size = self.state.solver.eval(limit)

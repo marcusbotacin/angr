@@ -106,7 +106,6 @@ class SimType:
     def c_repr(self):
         raise NotImplementedError()
 
-
 class SimTypeBottom(SimType):
     """
     SimTypeBottom basically represents a type error.
@@ -122,7 +121,8 @@ class SimTypeBottom(SimType):
         )
 
     def c_repr(self):
-        return "BOT"
+        #return "BOT"
+        return "void"
 
 
 class SimTypeTop(SimType):
@@ -278,8 +278,18 @@ class SimTypeInt(SimTypeReg):
         except KeyError:
             raise ValueError("Arch %s doesn't have its %s type defined!" % (self._arch.name, self._base_name))
 
+    def str_from_bv(self, state, bv=None):
+        n = state.solver.eval(bv)
+        if self.signed and n >= 1 << (self.size-1):
+            n -= 1 << self.size
+            n = -1 * n
+            return "-0x%x" % n
+        else:
+            return "0x%x" % n
+
     def extract(self, state, addr, concrete=False):
         out = state.memory.load(addr, self.size // state.arch.byte_width, endness=state.arch.memory_endness)
+
         if not concrete:
             return out
         n = state.solver.eval(out)
@@ -567,6 +577,10 @@ class SimTypeString(SimTypeArray):
 
     def c_repr(self):
         return 'string_t'
+
+    def str_from_bv(self, state, addr):
+        out = state.memory.load(addr)
+        return state.solver.eval(out, cast_to=bytes) if out is not None else ''
 
     def extract(self, state, addr, concrete=False):
         if self.length is None:

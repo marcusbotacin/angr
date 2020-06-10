@@ -35,6 +35,8 @@ libc.set_non_returning('exit_group', 'exit', 'abort', 'pthread_exit', '__assert_
 
 _libc_decls = \
     {
+        # long ptrace(enum __ptrace_request request, pid_t pid, void *addr, void *data);
+        "ptrace": SimTypeFunction([SimTypeInt(signed=False), SimTypeInt(signed=False), SimTypeInt(signed=False), SimTypeInt(signed=False)], SimTypeLong(signed=True)),
         # char * strerror (int ERRNUM);
         "strerror": SimTypeFunction([SimTypeInt(signed=True)], SimTypePointer(SimTypeChar(), offset=0), arg_names=["errnum"]),
         # char * strerror_r (int ERRNUM, char *BUF, size_t N);

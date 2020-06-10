@@ -4,6 +4,7 @@ class strcpy(angr.SimProcedure):
     #pylint:disable=arguments-differ
 
     def run(self, dst, src):
+        self.state.history.add_simproc_event(self)
         strlen = angr.SIM_PROCEDURES['libc']['strlen']
         strncpy = angr.SIM_PROCEDURES['libc']['strncpy']
         src_len = self.inline_call(strlen, src)

@@ -7,6 +7,7 @@ class memcmp(angr.SimProcedure):
     #pylint:disable=arguments-differ
 
     def run(self, s1_addr, s2_addr, n):
+        self.state.history.add_simproc_event(self)
         max_memcmp_size = self.state.libc.max_buffer_size
 
         definite_size = self.state.solver.min_int(n)

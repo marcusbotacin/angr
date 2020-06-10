@@ -10,9 +10,9 @@ from claripy.ast.bv import BV
 from .plugin import SimStatePlugin
 from .. import sim_options
 from ..state_plugins.sim_action import SimActionObject
+from ..state_plugins.sim_invocation import SimInvocation
 
 l = logging.getLogger(name=__name__)
-
 
 class SimStateHistory(SimStatePlugin):
     """
@@ -43,6 +43,7 @@ class SimStateHistory(SimStatePlugin):
         self.jumpkind = None if clone is None else clone.jumpkind
 
         # the execution log for this history
+        self.simproc_events = [ ] if clone is None else list(clone.simproc_events)
         self.recent_events = [ ] if clone is None else list(clone.recent_events)
         self.recent_bbl_addrs = [ ] if clone is None else list(clone.recent_bbl_addrs)
         self.recent_ins_addrs = [ ] if clone is None else list(clone.recent_ins_addrs)
@@ -136,6 +137,8 @@ class SimStateHistory(SimStatePlugin):
         # we must fix this in order to get
         # correct results when using constraints_since()
         self.parent = common_ancestor if common_ancestor is not None else self.parent
+
+        self.simproc_events = [e.simproc_events for e in itertools.chain([self], others)]
 
         self.recent_events = [e.recent_events for e in itertools.chain([self], others)
                               if not isinstance(e, SimActionConstraint)
@@ -324,6 +327,9 @@ class SimStateHistory(SimStatePlugin):
     #
     # Log handling
     #
+    def add_simproc_event(self, simproc):
+        new_simproc_event = SimInvocation(simproc)
+        self.simproc_events.append(new_simproc_event)
 
     def add_event(self, event_type, **kwargs):
         new_event = SimEvent(self.state, event_type, **kwargs)
@@ -367,6 +373,8 @@ class SimStateHistory(SimStatePlugin):
             for p in self.parent.lineage:
                 yield p
     @property
+    def simprocs(self):
+        return LambdaIterIter(self, operator.attrgetter('simproc_events'))
     def events(self):
         return LambdaIterIter(self, operator.attrgetter('recent_events'))
     @property

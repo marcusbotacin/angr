@@ -6,8 +6,8 @@ l = logging.getLogger(name=__name__)
 
 class scanf(FormatParser):
     #pylint:disable=arguments-differ,unused-argument
-
     def run(self, fmt):
+        self.state.history.add_simproc_event(self)
         fmt_str = self._parse(0)
 
         # we're reading from stdin so the region is the file's content

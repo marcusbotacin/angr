@@ -8,7 +8,6 @@ from archinfo.arch_soot import SootAddressDescriptor
 l = logging.getLogger(name=__name__)
 symbolic_count = itertools.count()
 
-
 class SimProcedure:
     """
     A SimProcedure is a wonderful object which describes a procedure to run on a state.

@@ -9,15 +9,14 @@ from .. import Analysis, AnalysesHub
 from .condition_processor import ConditionProcessor
 from .decompilation_options import DecompilationOption
 
-
 class Decompiler(Analysis):
-    def __init__(self, func, cfg=None, options=None, optimization_passes=None, sp_tracker_track_memory=True):
+    def __init__(self, func, cfg=None, options=None, optimization_passes=None, sp_tracker_track_memory=True, concrete_values=None):
         self.func = func
         self._cfg = cfg
         self._options = options
         self._optimization_passes = optimization_passes
         self._sp_tracker_track_memory = sp_tracker_track_memory
-
+        self.concrete_values = concrete_values
         self.clinic = None  # mostly for debugging purposes
         self.codegen = None
 
@@ -26,6 +25,12 @@ class Decompiler(Analysis):
     def _decompile(self):
 
         if self.func.is_simprocedure:
+            if self.concrete_values is not None:
+                self.codegen = self.project.analyses.StructuredCodeGenerator(self.func, [], cfg=self._cfg,
+                                                                func_args=[],
+                                                                kb=self.kb,
+                                                                variable_kb=None,
+                                                                concrete_values=self.concrete_values)
             return
 
         options_by_class = defaultdict(list)
@@ -59,7 +64,8 @@ class Decompiler(Analysis):
         codegen = self.project.analyses.StructuredCodeGenerator(self.func, s.result, cfg=self._cfg,
                                                                 func_args=clinic.arg_list,
                                                                 kb=self.kb,
-                                                                variable_kb=clinic.variable_kb)
+                                                                variable_kb=clinic.variable_kb,
+                                                                concrete_values=self.concrete_values)
 
         self.clinic = clinic
         self.codegen = codegen

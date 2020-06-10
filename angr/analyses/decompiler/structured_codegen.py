@@ -5,7 +5,8 @@ import logging
 from sortedcontainers import SortedDict
 
 from ailment import Block, Expr, Stmt
-
+from ...state_plugins import sim_invocation
+from ...sim_type import parse_type
 from ...sim_type import (SimTypeLongLong, SimTypeInt, SimTypeShort, SimTypeChar, SimTypePointer, SimStruct, SimType,
     SimTypeBottom, SimTypeArray, SimTypeFunction)
 from ...sim_variable import SimVariable, SimTemporaryVariable, SimStackVariable, SimRegisterVariable, SimMemoryVariable
@@ -182,7 +183,10 @@ class CFunction(CConstruct):  # pylint:disable=abstract-method
         # argument list
         yield "(", None
         for i, (arg_type, arg) in enumerate(zip(self.functy.args, self.arg_list)):
-            yield arg_type.c_repr(), None
+            if arg.type is None:
+                yield arg_type.c_repr(), None
+            else:
+                yield arg.type.c_repr(), None
             yield " ", None
             yield from arg.c_repr_chunks()
             if i != len(self.arg_list) - 1:
@@ -539,12 +543,13 @@ class CFunctionCall(CStatement):
 
 class CReturn(CStatement):
 
-    __slots__ = ('retval', )
+    __slots__ = ('retval', 'comment')
 
-    def __init__(self, retval):
+    def __init__(self, retval, comment=None):
         super().__init__()
 
         self.retval = retval
+        self.comment = comment
 
     def c_repr_chunks(self, indent=0):
 
@@ -553,6 +558,21 @@ class CReturn(CStatement):
         if self.retval is None:
             yield indent_str, None
             yield "return;", None
+        elif type(self.retval) is str:
+            yield indent_str, None
+            if self.comment is not None:
+                yield "return %s; // points to %s\n" % (self.retval,self.comment), None
+            else:
+                yield "return %s;\n" % self.retval, None
+        elif type(self.retval) is int:
+            yield indent_str, None
+            yield "return ", None
+            # fix to add 0x#x
+            if self.retval >= 0:
+                yield "0x%x" % self.retval, None
+            else:
+                yield "-0x%x" % abs(self.retval), None
+            yield ";\n", None
         else:
             yield indent_str, None
             yield "return ", None
@@ -1065,9 +1085,59 @@ class CDirtyExpression(CExpression):
     def c_repr_chunks(self):
         yield str(self.dirty), None
 
+class Concretizer:
+    def __init__(self, values):
+        if values is None:
+            raise ValueError("Supplied instance is None")
+        if type(values) is list:
+            if any([self.__check_invocation(value) is False for value in values]):
+                raise ValueError("An instance in the supplied list is not a SimInvocation")
+        elif self.__check_invocation(values)==False:
+                raise ValueError("Supplied instance is not a SimInvocation")
+        self.values = values
+
+    def get_args(self):
+        arg_list = []
+        val = self.values[0].prototype.args if type(self.values) is list else self.values.prototype.args
+        for idx, arg in enumerate(val):
+            v = CVariable(SimVariable(ident=None, name="var"+str(idx), region=None, category=None),None,arg)
+            arg_list.append(v)
+        return arg_list
+
+    def __check_invocation(self, value):
+        return type(value) is sim_invocation.SimInvocation
+
+    def get_global_var(self):
+        if type(self.values) is list:
+            self.sv = SimVariable(ident=None, name="angr_global_var", region=None, category=None)
+            self.cv = CVariable(self.sv,None,None)
+            return self.sv, self.cv
+        return None, None
+
+    def __get_ret_stmt(self, value):
+        simtype = value.prototype.returnty
+        if type(simtype) is SimTypePointer and type(simtype.pts_to) is SimTypeChar:
+            return CReturn(retval="addr",comment=value.str_from_ret())
+        return CReturn(retval=value.get_ret())
+
+    def get_statements(self):
+        if type(self.values) is list:
+            stmts = []
+            stmts.append(CAssignment(self.cv,0))
+            c1 = CConstant(1,SimTypeInt,None,None)
+            op = CBinaryOp("Add",self.cv,c1,None)
+            stmts.append(CAssignment(self.cv,op))
+            for idx, val in enumerate(self.values):
+                c2 = CConstant(idx+1,SimTypeInt,None,None)
+                r1 = self.__get_ret_stmt(self.values[idx])
+                cond = CBinaryOp("CmpEQ",self.cv,c2,None)
+                stmts.append(CIfElse(cond, true_node=r1, false_node=None))
+            return CStatements(stmts)
+        else:
+            return self.__get_ret_stmt(self.values)
 
 class StructuredCodeGenerator(Analysis):
-    def __init__(self, func, sequence, indent=0, cfg=None, variable_kb=None,
+    def __init__(self, func, sequence, indent=0, cfg=None, variable_kb=None, concrete_values=None,
                  func_args: Optional[List[SimVariable]]=None):
 
         self._handlers = {
@@ -1107,7 +1177,7 @@ class StructuredCodeGenerator(Analysis):
         self._cfg = cfg
         self._sequence = sequence
         self._variable_kb = variable_kb if variable_kb is not None else self.kb
-
+        self._concrete_values = concrete_values
         self._variables_in_use: Optional[Dict] = None
 
         self.text = None
@@ -1124,7 +1194,17 @@ class StructuredCodeGenerator(Analysis):
             arg_list = [self._handle(arg) for arg in self._func_args]
         else:
             arg_list = [ ]
-        obj = self._handle(self._sequence)
+
+        if self._concrete_values is None:
+            obj = self._handle(self._sequence)
+        else:
+            self._variables_in_use = {}
+            conc = Concretizer(self._concrete_values)
+            sv, cv = conc.get_global_var()
+            if sv is not None:
+                self._variables_in_use[sv] = cv
+            arg_list = conc.get_args()
+            obj = conc.get_statements()
 
         func = CFunction(self._func.name, self._func.prototype, arg_list, obj, self._variables_in_use,
                          self._variable_kb.variables[self._func.addr], demangled_name=self._func.demangled_name)

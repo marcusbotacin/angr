@@ -7,6 +7,8 @@ class strcmp(angr.SimProcedure):
     #pylint:disable=arguments-differ
 
     def run(self, a_addr, b_addr, wchar=False, ignore_case=False):
+        self.state.history.add_simproc_event(self)
+
         strlen = angr.SIM_PROCEDURES['libc']['strlen']
 
         a_strlen = self.inline_call(strlen, a_addr, wchar=wchar)

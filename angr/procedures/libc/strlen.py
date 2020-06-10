@@ -10,6 +10,8 @@ class strlen(angr.SimProcedure):
     max_null_index = None
 
     def run(self, s, wchar=False):
+        self.state.history.add_simproc_event(self)
+
         if wchar:
             null_seq = self.state.solver.BVV(0, 16)
             step = 2
